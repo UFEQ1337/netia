@@ -1,7 +1,6 @@
 # Strategia testów — Trouble Ticket API
 
-> Dokument strategii testów dla aplikacji **Trouble Ticket API** (zadanie rekrutacyjne, stanowisko: Tester automatyzacji).
-> Towarzyszy mu implementacja scenariuszy w katalogu [`qa/`](../) (Playwright + TypeScript) oraz instrukcja uruchomienia w [`qa/README.md`](../README.md).
+> Implementacja scenariuszy: [`qa/`](../) (Playwright + TypeScript). Instrukcja uruchomienia: [`qa/README.md`](../README.md).
 
 ---
 
@@ -81,8 +80,6 @@ Wybrano **ujednolicony stack Playwright + TypeScript** dla obu obszarów (API i 
 - **Jeden runner, jeden raport** — Playwright ma pierwszorzędną obsługę testów API (`request`) oraz E2E, wspólne fixture'y, równoległość i `trace viewer` do diagnostyki.
 - **Realne logowanie** — Playwright dobrze radzi sobie z przepływem przekierowań OAuth2/OIDC; sesję logujemy raz i reużywamy (`storageState`).
 
-> Alternatywy rozważone: REST Assured + JUnit (Java) dla API oraz Selenium dla UI. Odrzucone na rzecz spójności (jeden toolchain, mniejszy koszt utrzymania, szybsza diagnostyka).
-
 ### 4.3. Zasady projektowe testów
 - **Niezależność** — każdy test tworzy własne dane przez API (unikalny `externalId`), nie zależy od kolejności ani od danych zasiewanych.
 - **Reużywalność** — wspólna warstwa: konfiguracja, pobieranie tokenu, klient API, generatory danych, helpery zasiewu, fixture'y ([`qa/src/`](../src/)).
@@ -98,11 +95,10 @@ Wybrano **ujednolicony stack Playwright + TypeScript** dla obu obszarów (API i 
 | **Niedeterministyczne dane zasiewane** — skrypt 005 tworzy *losową* liczbę notatek na zgłoszenie | Fałszywe wyniki przy asercji liczności | Tworzymy własne dane (fixtures) z unikalnym `externalId`; na danych zasiewanych tylko odczyt i asercje „zawiera" |
 | **Logowanie przez Keycloak w UI** — przekierowania, czas, potencjalna niestabilność | Flaky testy E2E | Logowanie raz w `auth.setup.ts` → `storageState` (cookie SSO) reużywane; retry w CI; jawne oczekiwania na elementy |
 | **Czas startu środowiska** (~60–90 s, kolejność health-checków) | Pierwsze testy padają na niegotowym środowisku | `globalSetup` (readiness check) czeka na token Keycloak + autoryzowane API + frontend z czytelnym komunikatem |
-| **Sklejanie `baseURL`** gubiące prefiks `/api/v1` | Błędne adresy w testach API | Klient API buduje pełne adresy URL, nie polega na sklejaniu `baseURL` |
 | **Rozbieżności kontrakt ↔ implementacja** (patrz sekcja 7) | Testy oparte na specyfikacji padają lub maskują defekty | Testy dokumentują **stan faktyczny** z jawnym komentarzem; rozbieżności raportowane jako defekty/pytania do analizy |
 | **Wygaśnięcie / unieważnienie tokenu** | Niestabilność długich serii | Token cache'owany per worker; żywotność 3600 s wystarcza na czas testów |
 | **Brak izolacji między uruchomieniami** (dane narastają w bazie) | Kolizje `externalId` | Unikalny `externalId` (timestamp + licznik + losowość) |
-| **Zależność od środowiska zewnętrznego** (Docker) | Brak możliwości uruchomienia | README z dokładną instrukcją; readiness check; (dalej) pipeline CI |
+| **Zależność od środowiska zewnętrznego** (Docker) | Brak możliwości uruchomienia | README z dokładną instrukcją; readiness check; pipeline CI |
 
 ---
 
