@@ -1,0 +1,16 @@
+FROM gradle:9.4.1-jdk21-ubi AS builder
+
+WORKDIR /home/gradle
+
+COPY settings.gradle* build.gradle* gradle.properties ./
+COPY src ./src
+
+RUN --mount=type=cache,id=gradle-cache,target=/home/gradle/.gradle \
+    --mount=type=cache,id=m2-cache,target=/home/gradle/.m2/repository \
+    gradle -x test build
+
+FROM eclipse-temurin:21-jre AS runtime
+
+WORKDIR /app
+COPY --from=builder /home/gradle/build/libs/*.jar /app/app.jar
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

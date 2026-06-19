@@ -1,0 +1,100 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.0.5'
+	id 'io.spring.dependency-management' version '1.1.7'
+    id 'org.openapi.generator' version '7.14.0'
+}
+
+group = 'pl.netia.tests'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+compileJava {
+    options.compilerArgs += ['-Amapstruct.defaultComponentModel=spring']
+}
+
+def generatedOpenApiDir = layout.buildDirectory.dir('generated/openapi')
+
+sourceSets {
+    main {
+        java {
+            srcDir generatedOpenApiDir.map { it.dir('src/main/java') }
+        }
+    }
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-liquibase'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation ('org.springframework.boot:spring-boot-starter-webmvc') {      
+        exclude group: 'org.springframework.boot', module: 'spring-boot-starter-tomcat'
+    }    
+    implementation 'org.springframework.boot:spring-boot-starter-jetty'
+    implementation 'io.swagger.core.v3:swagger-annotations-jakarta:2.2.31'
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.2'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+    implementation 'org.mapstruct:mapstruct:1.6.3'
+    annotationProcessor 'org.mapstruct:mapstruct-processor:1.6.3'
+	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+	runtimeOnly 'org.postgresql:postgresql'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.springframework.security:spring-security-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
+    testImplementation 'org.testcontainers:postgresql:1.21.4'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+openApiGenerate {
+    generatorName = 'spring'
+    inputSpec = file('src/main/openapi/trouble-ticket-api.yaml').toURI().toString()
+    outputDir = generatedOpenApiDir.get().asFile.absolutePath
+    apiPackage = 'pl.netia.tests.ttapi.api'
+    modelPackage = 'pl.netia.tests.ttapi.model'
+    invokerPackage = 'pl.netia.tests.ttapi.generated'
+    modelNameSuffix = 'Dto'
+    generateApiTests = false
+    generateModelTests = false
+    generateApiDocumentation = false
+    generateModelDocumentation = false
+    configOptions = [
+        library            : 'spring-boot',
+        interfaceOnly      : 'true',
+        useSpringBoot3     : 'true',
+        useJakartaEe       : 'true',
+        useTags            : 'true',
+        performBeanValidation: 'true',
+        dateLibrary        : 'java8',
+        openApiNullable    : 'false',
+        serializableModel  : 'true',
+        useResponseEntity  : 'true',
+        requestMappingMode : 'api_interface',
+        skipDefaultInterface: 'true'
+    ]
+}
+
+tasks.named('compileJava') {
+    dependsOn tasks.named('openApiGenerate')
+}
+
+tasks.named('processResources') {
+    from('src/main/openapi') {
+        into('static/openapi')
+    }
+}
+
+tasks.named('openApiGenerate') {
+    inputs.file(file('src/main/openapi/trouble-ticket-api.yaml'))
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}

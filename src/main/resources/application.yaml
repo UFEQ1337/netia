@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: ttapi
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/rest_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI:https://placeholder.example.com/issuer}
+
+app:
+  security:
+    tenant-claim: tenant_id
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    url: /openapi/trouble-ticket-api.yaml
+    disable-swagger-default-url: true
+    operations-sorter: method

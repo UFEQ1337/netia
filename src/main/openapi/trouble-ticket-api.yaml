@@ -1,0 +1,668 @@
+openapi: 3.1.0
+info:
+  title: Trouble Ticket API
+  version: 1.0.0
+  description: |
+    Minimalny, design-first profil TMF621 Trouble Ticket
+
+    Zakres v1:
+    - tworzenie zgłoszenia
+    - listowanie zgłoszeń
+    - pobranie pojedynczego zgłoszenia
+    - zamknięcie zgłoszenia przez klienta API
+    - dodanie notatki do zgłoszenia
+
+    Zasady kontraktu:
+    - wszystkie endpointy wymagają Bearer token
+    - tenant scope wynika wyłącznie z kontekstu uwierzytelnienia
+    - create przyjmuje wyłącznie status `new`
+    - publiczny update statusu dopuszcza wyłącznie status `closed`
+
+    Wersjonowanie:
+    - aktualny adres bazowy: `/api/v1`
+    - kolejne wersje można dodać przez rozszerzenie zmiennej `version` w sekcji `servers`
+
+servers:
+  - url: /api/v{version}
+    description: Publiczny adres bazowy API
+    variables:
+      version:
+        default: '1'
+        description: Główna wersja publicznego API. Kolejne wersje należy dodać przez rozszerzenie listy enum.
+        enum:
+          - '1'
+
+tags:
+  - name: TroubleTicket
+    description: Operacje na zgłoszeniach Trouble Ticket.
+  - name: TroubleTicketNote
+    description: Operacje dodawania notatek do zgłoszeń Trouble Ticket.
+
+security:
+  - bearerAuth: []
+
+paths:
+  /troubleTicket:
+    post:
+      tags:
+        - TroubleTicket
+      operationId: createTroubleTicket
+      summary: Utwórz zgłoszenie Trouble Ticket
+      description: |
+        Tworzy nowe zgłoszenie przypisane do tenant scope wynikającego z Bearer tokenu.
+
+        Klient publicznego API może przekazać wyłącznie status `new`.
+        Jeżeli istnieje już zgłoszenie o tym samym `(tenantId, externalId)`, API zwraca `200 OK`
+        z istniejącą reprezentacją zasobu.
+
+        Dla nowo utworzonego zgłoszenia odpowiedź może już zwracać status `acknowledged`,
+        zgodnie z przepływem przetwarzania po stronie SOZ.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TroubleTicketCreateRequest'
+            examples:
+              createRequest:
+                $ref: '#/components/examples/TroubleTicketCreateRequest'
+      responses:
+        '201':
+          description: Zgłoszenie utworzone.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TroubleTicket'
+              examples:
+                created:
+                  $ref: '#/components/examples/TroubleTicketCreatedResponse'
+        '200':
+          description: Zwrócono istniejące zgłoszenie na podstawie idempotencji `(tenantId, externalId)`.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TroubleTicket'
+              examples:
+                existing:
+                  $ref: '#/components/examples/TroubleTicketExistingResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ServiceNotFound'
+
+    get:
+      tags:
+        - TroubleTicket
+      operationId: listTroubleTickets
+      summary: Listuj zgłoszenia Trouble Ticket
+      description: |
+        Zwraca minimalną listę zgłoszeń widocznych dla uwierzytelnionego użytkownika.
+
+        W wersji v1 odpowiedź nie wspiera paginacji ani filtrowania.
+        Zakres danych jest ograniczony do: `externalId`, `serviceId`, `description`, `status`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista zgłoszeń dostępnych w tenant scope użytkownika.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TroubleTicketSummary'
+              examples:
+                list:
+                  $ref: '#/components/examples/TroubleTicketListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /troubleTicket/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TroubleTicketId'
+
+    get:
+      tags:
+        - TroubleTicket
+      operationId: getTroubleTicketById
+      summary: Pobierz pojedyncze zgłoszenie Trouble Ticket
+      description: |
+        Zwraca pełną reprezentację zgłoszenia widocznego dla uwierzytelnionego użytkownika.
+
+        tenant scope wynika wyłącznie z Bearer tokenu.
+        Dla zasobu nieistniejącego albo niewidocznego w tenant scope należy zwrócić `404`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Pełna reprezentacja zgłoszenia.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TroubleTicket'
+              examples:
+                ticket:
+                  $ref: '#/components/examples/TroubleTicketResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/TroubleTicketNotFound'
+
+    patch:
+      tags:
+        - TroubleTicket
+      operationId: closeTroubleTicket
+      summary: Zamknij zgłoszenie Trouble Ticket
+      description: |
+        Umożliwia publicznemu klientowi API zmianę statusu wyłącznie na `closed`.
+
+        Zmiana statusu jest dozwolona tylko gdy zgłoszenie jest w statusie `acknowledged`
+        lub `inProgress`. Próba zmiany z dowolnego innego statusu zostanie odrzucona jako `400`
+        z kodem `STATUS_TRANSITION_ERROR`.
+
+        Po pomyślnej zmianie statusu do zgłoszenia automatycznie dodawana jest notatka
+        odnotowująca przejście statusu.
+
+        Pozostałe przejścia statusów są poza zakresem tej specyfikacji.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TroubleTicketCloseStatusRequest'
+            examples:
+              closeRequest:
+                $ref: '#/components/examples/TroubleTicketCloseRequest'
+      responses:
+        '200':
+          description: Zgłoszenie zostało zamknięte.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TroubleTicket'
+              examples:
+                closed:
+                  $ref: '#/components/examples/TroubleTicketClosedResponse'
+        '400':
+          description: Żądanie niepoprawne lub niedozwolone przejście statusu.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidPayload:
+                  $ref: '#/components/examples/BadRequestError'
+                invalidStatusTransition:
+                  $ref: '#/components/examples/StatusTransitionError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/TroubleTicketNotFound'
+
+  /troubleTicket/{id}/note:
+    parameters:
+      - $ref: '#/components/parameters/TroubleTicketId'
+
+    post:
+      tags:
+        - TroubleTicketNote
+      operationId: addTroubleTicketNote
+      summary: Dodaj notatkę do zgłoszenia Trouble Ticket
+      description: |
+        Tworzy nową notatkę dla istniejącego zgłoszenia widocznego w tenant scope użytkownika.
+
+        Operacja tworzy subresource notatki i nie służy do zmiany statusu zgłoszenia.
+
+        Dodanie notatki jest niedozwolone, gdy zgłoszenie ma status `resolved`, `closed` lub `rejected`.
+        W takim przypadku API zwraca `400 Bad Request` z kodem `NOTE_ADDITION_NOT_ALLOWED`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteCreateRequest'
+            examples:
+              addNote:
+                $ref: '#/components/examples/NoteCreateRequest'
+      responses:
+        '201':
+          description: Notatka została dodana.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+              examples:
+                note:
+                  $ref: '#/components/examples/NoteResponse'
+        '400':
+          description: Żądanie niepoprawne lub operacja niedozwolona w bieżącym statusie zgłoszenia.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidPayload:
+                  $ref: '#/components/examples/BadRequestError'
+                noteAdditionNotAllowed:
+                  $ref: '#/components/examples/NoteAdditionNotAllowedError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/TroubleTicketNotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Bearer token użytkownika lub konta API. Tenant scope wynika wyłącznie z poprawnie zweryfikowanego tokenu.
+
+  headers:
+    Location:
+      description: Kanoniczny adres zasobu Trouble Ticket.
+      schema:
+        type: string
+        format: uri-reference
+
+  parameters:
+    TroubleTicketId:
+      name: id
+      in: path
+      required: true
+      description: Unikalny identyfikator zgłoszenia Trouble Ticket.
+      schema:
+        type: string
+        minLength: 1
+
+  responses:
+    BadRequest:
+      description: Żądanie jest niepoprawne lub wykracza poza dozwolony kontrakt v1.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            invalidPayload:
+              $ref: '#/components/examples/BadRequestError'
+
+    Unauthorized:
+      description: Brak uwierzytelnienia albo niepoprawny token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            unauthorized:
+              $ref: '#/components/examples/UnauthorizedError'
+
+    Forbidden:
+      description: Użytkownik jest uwierzytelniony, ale nie ma wymaganych uprawnień do wykonania operacji.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            forbidden:
+              $ref: '#/components/examples/ForbiddenError'
+
+    ServiceNotFound:
+      description: Wskazana usługa nie istnieje, nie jest aktywna albo nie należy do tenant scope użytkownika.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            serviceNotFound:
+              $ref: '#/components/examples/ServiceNotFoundError'
+
+    TroubleTicketNotFound:
+      description: Zgłoszenie nie istnieje albo nie jest widoczne w tenant scope użytkownika.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            troubleTicketNotFound:
+              $ref: '#/components/examples/TroubleTicketNotFoundError'
+
+  schemas:
+    TroubleTicketStatus:
+      type: string
+      description: Pełny zestaw statusów Trouble Ticket zwracanych przez publiczne API.
+      enum:
+        - new
+        - acknowledged
+        - inProgress
+        - resolved
+        - closed
+        - rejected
+
+    TroubleTicketCreateStatus:
+      type: string
+      description: Jedyny dozwolony status w żądaniu utworzenia zgłoszenia.
+      enum:
+        - new
+
+    TroubleTicketCloseStatus:
+      type: string
+      description: Jedyny dozwolony status w publicznym żądaniu zmiany statusu.
+      enum:
+        - closed
+
+    TroubleTicketCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - externalId
+        - serviceId
+        - description
+        - status
+      properties:
+        externalId:
+          type: string
+          minLength: 1
+          description: Identyfikator zewnętrzny nadany przez klienta. Używany do idempotencji w zakresie `(tenantId, externalId)`.
+        serviceId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Identyfikator usługi klienta. W v1 jest uproszczonym polem top-level.
+        description:
+          type: string
+          minLength: 1
+          description: Opis zgłoszenia zgodny z profilem TMF621.
+        status:
+          $ref: '#/components/schemas/TroubleTicketCreateStatus'
+        note:
+          type: string
+          minLength: 1
+          description: Pierwsza notatka zgłoszenia. Po utworzeniu jest zwracana jako pierwszy element `notes`.
+
+    TroubleTicketSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - externalId
+        - serviceId
+        - description
+        - status
+      properties:
+        externalId:
+          type: string
+          minLength: 1
+          description: Identyfikator zewnętrzny nadany przez klienta.
+        serviceId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Identyfikator usługi klienta.
+        description:
+          type: string
+          minLength: 1
+          description: Opis zgłoszenia.
+        status:
+          $ref: '#/components/schemas/TroubleTicketStatus'
+
+    TroubleTicket:
+      type: object
+      additionalProperties: false
+      required:
+        - externalId
+        - serviceId
+        - description
+        - status
+        - notes
+      properties:
+        externalId:
+          type: string
+          minLength: 1
+          description: Identyfikator zewnętrzny nadany przez klienta.
+        serviceId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Identyfikator usługi klienta.
+        description:
+          type: string
+          minLength: 1
+          description: Opis zgłoszenia.
+        status:
+          $ref: '#/components/schemas/TroubleTicketStatus'
+        notes:
+          type: array
+          description: Lista notatek przypisanych do zgłoszenia.
+          items:
+            $ref: '#/components/schemas/Note'
+
+    TroubleTicketCloseStatusRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/TroubleTicketCloseStatus'
+
+    NoteCreateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - text
+      properties:
+        text:
+          type: string
+          minLength: 1
+          description: Treść dodawanej notatki.
+
+    Note:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - text
+        - date
+      properties:
+        id:
+          type: string
+          minLength: 1
+          readOnly: true
+          description: Identyfikator notatki.
+        text:
+          type: string
+          minLength: 1
+          description: Treść notatki.
+        date:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Data utworzenia notatki.
+
+    Error:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          minLength: 1
+          description: Kod błędu przeznaczony do obsługi programistycznej.
+        message:
+          type: string
+          minLength: 1
+          description: Czytelny opis błędu.
+        requestId:
+          type: string
+          minLength: 1
+          description: Identyfikator żądania do korelacji diagnostycznej.
+
+  examples:
+    TroubleTicketCreateRequest:
+      summary: Przykład żądania utworzenia zgłoszenia
+      value:
+        externalId: OK-123456
+        serviceId: 987654321
+        description: Brak transmisji danych dla usługi klienta.
+        status: new
+        note: Zgłoszenie utworzone przez konto API partnera.
+
+    TroubleTicketCreatedResponse:
+      summary: Przykład odpowiedzi dla nowo utworzonego zgłoszenia
+      value:
+        externalId: OK-123456
+        serviceId: 987654321
+        description: Brak transmisji danych dla usługi klienta.
+        status: acknowledged
+        notes:
+          - id: NOTE-000001
+            text: Zgłoszenie utworzone przez konto API partnera.
+            date: '2026-03-19T10:15:00Z'
+
+    TroubleTicketExistingResponse:
+      summary: Przykład odpowiedzi idempotentnej
+      value:
+        externalId: OK-123456
+        serviceId: 987654321
+        description: Brak transmisji danych dla usługi klienta.
+        status: inProgress
+        notes:
+          - id: NOTE-000001
+            text: Zgłoszenie utworzone przez konto API partnera.
+            date: '2026-03-19T10:15:00Z'
+          - id: NOTE-000002
+            text: Weryfikacja zgłoszenia w toku.
+            date: '2026-03-19T10:20:00Z'
+
+    TroubleTicketListResponse:
+      summary: Przykład odpowiedzi listującej zgłoszenia
+      value:
+        - externalId: OK-123456
+          serviceId: 987654321
+          description: Brak transmisji danych dla usługi klienta.
+          status: acknowledged
+        - externalId: OK-123457
+          serviceId: 987654322
+          description: Niestabilne parametry usługi.
+          status: resolved
+
+    TroubleTicketResponse:
+      summary: Przykład pełnej reprezentacji zgłoszenia
+      value:
+        externalId: OK-123456
+        serviceId: 987654321
+        description: Brak transmisji danych dla usługi klienta.
+        status: resolved
+        notes:
+          - id: NOTE-000001
+            text: Zgłoszenie utworzone przez konto API partnera.
+            date: '2026-03-19T10:15:00Z'
+          - id: NOTE-000002
+            text: Potwierdzono diagnozę po stronie operatora infrastruktury.
+            date: '2026-03-19T10:30:00Z'
+
+    TroubleTicketCloseRequest:
+      summary: Przykład żądania zamknięcia zgłoszenia
+      value:
+        status: closed
+
+    TroubleTicketClosedResponse:
+      summary: Przykład odpowiedzi po zamknięciu zgłoszenia
+      value:
+        externalId: OK-123456
+        serviceId: 987654321
+        description: Brak transmisji danych dla usługi klienta.
+        status: closed
+        notes:
+          - id: NOTE-000001
+            text: Zgłoszenie utworzone przez konto API partnera.
+            date: '2026-03-19T10:15:00Z'
+          - id: NOTE-000002
+            text: Klient potwierdził zamknięcie zgłoszenia.
+            date: '2026-03-19T11:00:00Z'
+
+    NoteCreateRequest:
+      summary: Przykład żądania dodania notatki
+      value:
+        text: Klient prosi o potwierdzenie planowanego terminu zamknięcia.
+
+    NoteResponse:
+      summary: Przykład odpowiedzi po dodaniu notatki
+      value:
+        id: NOTE-000003
+        text: Klient prosi o potwierdzenie planowanego terminu zamknięcia.
+        date: '2026-03-19T10:45:00Z'
+
+    BadRequestError:
+      summary: Przykład błędu walidacji
+      value:
+        code: VALIDATION_ERROR
+        message: Pole status ma niedozwoloną wartość dla tej operacji.
+        requestId: req-9f8e7d6c
+
+    StatusTransitionError:
+      summary: Przykład błędu niedozwolonego przejścia statusu
+      value:
+        code: STATUS_TRANSITION_ERROR
+        message: "Niedozwolone przejście statusu: new -> closed"
+        requestId: req-9f8e7d6c
+
+    NoteAdditionNotAllowedError:
+      summary: Przykład błędu dodania notatki do zamkniętego zgłoszenia
+      value:
+        code: NOTE_ADDITION_NOT_ALLOWED
+        message: "Dodanie notatki nie jest dozwolone dla zgłoszenia w statusie: closed"
+        requestId: req-9f8e7d6c
+
+    UnauthorizedError:
+      summary: Przykład błędu uwierzytelnienia
+      value:
+        code: UNAUTHORIZED
+        message: Brak poprawnego Bearer tokenu.
+        requestId: req-9f8e7d6c
+
+    ForbiddenError:
+      summary: Przykład błędu autoryzacji
+      value:
+        code: FORBIDDEN
+        message: Użytkownik nie ma uprawnień do wykonania tej operacji.
+        requestId: req-9f8e7d6c
+
+    ServiceNotFoundError:
+      summary: Przykład błędu walidacji usługi
+      value:
+        code: SERVICE_NOT_FOUND
+        message: Wskazana usługa nie istnieje, nie jest aktywna albo nie należy do tenant scope użytkownika.
+        requestId: req-9f8e7d6c
+
+    TroubleTicketNotFoundError:
+      summary: Przykład błędu braku zgłoszenia
+      value:
+        code: TROUBLE_TICKET_NOT_FOUND
+        message: Zgłoszenie nie istnieje albo nie jest widoczne w tenant scope użytkownika.
+        requestId: req-9f8e7d6c

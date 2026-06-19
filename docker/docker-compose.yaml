@@ -1,0 +1,95 @@
+services:
+
+  # ---------------------------------------------------------------------------
+  # Baza danych PostgreSQL - dostępna na hoście na porcie 5432
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:18.3
+    container_name: ttapi-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-rest_db}
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-rest_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Keycloak - serwer autoryzacji OAuth2/OIDC
+  # Admin UI: http://localhost:8180
+  # Token endpoint: POST http://localhost:8180/realms/ttapi/protocol/openid-connect/token
+  # ---------------------------------------------------------------------------
+  keycloak:
+    image: keycloak/keycloak:26.2
+    container_name: ttapi-keycloak
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:-admin}
+      KC_HOSTNAME: "http://localhost:${KC_PORT:-8180}"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "${KC_PORT:-8180}:8080"
+      - "${KC_ADMIN_PORT:-9000}:9000"
+    volumes:
+      - ./keycloak/realm-ttapi.json:/opt/keycloak/data/import/realm-ttapi.json
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/${KC_ADMIN_PORT:-9000} && printf \"GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3 && grep -q UP <&3'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Aplikacja TTAPI - uruchamiana z podmontowanego build/libs/
+  # API: http://localhost:8080
+  # ---------------------------------------------------------------------------
+  app:
+    image: ttapi:latest
+    container_name: ttapi-app
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-gradle
+      target: runtime
+    ports:
+      - "8080:8080"
+    environment:
+      DB_URL: "jdbc:postgresql://postgres:5432/${DB_NAME:-rest_db}"
+      DB_USERNAME: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      # JWT_ISSUER_URI musi odpowiadać wartości "iss" w tokenach Keycloak (zewnętrzny URL hosta)
+      JWT_ISSUER_URI: "http://localhost:${KC_PORT:-8180}/realms/ttapi"
+      # JWK set URI używa wewnętrznej nazwy DNS kontenera Keycloak
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: "http://keycloak:8080/realms/ttapi/protocol/openid-connect/certs"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Frontend - React SPA serwowana przez Nginx
+  # UI: http://localhost:3000
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-npm
+      target: front-runtime
+      args:
+        VITE_KC_URL: "http://localhost:${KC_PORT:-8180}"
+        VITE_KC_REALM: "ttapi"
+        VITE_KC_CLIENT_ID: "ttapi-client"
+        VITE_API_URL: "/api/v1"
+    container_name: ttapi-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - app
+      - keycloak
+

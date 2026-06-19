@@ -1,0 +1,15 @@
+# Wyklucz katalogi developerskie i źródłowe - do obrazu trafia wyłącznie dist/
+node_modules
+src
+public
+.agents
+
+# Pliki konfiguracyjne niepotrzebne w obrazie
+*.config.ts
+tsconfig*.json
+package*.json
+vite.config.ts
+index.html
+Dockerfile
+.dockerignore
+README.md

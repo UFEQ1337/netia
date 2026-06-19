@@ -1,0 +1,42 @@
+pluginManagement {
+    def mavenRepoUrl = providers.gradleProperty('MAVEN_REPO_URL').getOrNull()
+    repositories {
+        mavenLocal()
+        if (mavenRepoUrl == null) {
+            gradlePluginPortal()
+            mavenCentral()
+        } else {
+            maven {
+                url mavenRepoUrl
+                credentials {
+                    username providers.gradleProperty('MAVEN_REPO_USR').getOrNull()
+                    password providers.gradleProperty('MAVEN_REPO_PSW').getOrNull()
+                }
+            }
+        }
+    }
+    plugins {
+        id 'org.springframework.boot' version "4.0.5"
+    }
+}
+
+dependencyResolutionManagement {
+    def mavenRepoUrl = providers.gradleProperty('MAVEN_REPO_URL').getOrNull()
+    repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
+    repositories {
+        mavenLocal()
+        if (mavenRepoUrl == null) {
+            mavenCentral()
+        } else {
+            maven {
+                url mavenRepoUrl
+                credentials {
+                    username providers.gradleProperty('MAVEN_REPO_USR').getOrNull()
+                    password providers.gradleProperty('MAVEN_REPO_PSW').getOrNull()
+                }
+            }
+        }
+    }
+}
+
+rootProject.name = 'ttapi'

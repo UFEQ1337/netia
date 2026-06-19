@@ -1,0 +1,20 @@
+{
+  "name": "ttapi-qa",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Testy automatyczne (API + UI) dla aplikacji Trouble Ticket API — Playwright + TypeScript",
+  "scripts": {
+    "test": "playwright test",
+    "test:api": "playwright test --project=api",
+    "test:ui": "playwright test --project=ui",
+    "report": "playwright show-report",
+    "install:browsers": "playwright install chromium",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.10.0",
+    "dotenv": "^16.4.7",
+    "typescript": "^5.7.0"
+  }
+}

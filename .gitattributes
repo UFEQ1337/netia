@@ -1,0 +1,16 @@
+/gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary
+
+# git archive - wykluczenia
+.agents/ export-ignore
+AGENTS.md export-ignore
+.vscode/ export-ignore
+.gradle/ export-ignore
+.idea/ export-ignore
+build/ export-ignore
+*.iml export-ignore
+*.iws export-ignore
+*.ipr export-ignore
+frontend/node_modules/ export-ignore
+frontend/package-lock.json export-ignore

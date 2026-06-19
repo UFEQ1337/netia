@@ -1,0 +1,19 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-trouble-ticket-schema
+      author: michal.adamczyk@netia.pl
+      dbms: postgresql
+      changes:
+        - sqlFile:
+            path: sql/001-create-trouble-ticket-schema.sql
+            relativeToChangelogFile: true
+  - changeSet:
+      id: 005-load-sample-trouble-tickets
+      author: michal.adamczyk@netia.pl
+      dbms: postgresql
+      context: sample-data
+      changes:
+        - sqlFile:
+            path: sql/005-load-sample-trouble-tickets.sql
+            relativeToChangelogFile: true
+            splitStatements: false
