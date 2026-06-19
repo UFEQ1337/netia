@@ -1,5 +1,6 @@
 import { test, expect } from '../../src/fixtures';
 import { seedAcknowledged, seedRejected } from '../../src/seed';
+import { SEED_ALPHA } from '../../src/data';
 import type { ApiError, TroubleTicket } from '../../src/api-client';
 
 test.describe('API: przejścia statusów (zamykanie zgłoszeń)', () => {
@@ -44,6 +45,20 @@ test.describe('API: przejścia statusów (zamykanie zgłoszeń)', () => {
     expect((await alphaClient.close(externalId)).status()).toBe(200);
 
     const res = await alphaClient.close(externalId);
+    expect(res.status()).toBe(400);
+    expect(((await res.json()) as ApiError).code).toBe('STATUS_TRANSITION_ERROR');
+  });
+
+  test('[neg] zamknięcie zgłoszenia w statusie resolved → 400 STATUS_TRANSITION_ERROR', async ({
+    alphaClient,
+  }) => {
+    // Statusy `resolved`/`new` są nieosiągalne przez publiczne API (create rozstrzyga status
+    // przez parzystość serviceId), dlatego korzystamy z deterministycznego zgłoszenia zasiewanego.
+    const sanity = await alphaClient.get(SEED_ALPHA.resolved);
+    expect(sanity.status(), `Brak danych zasiewanych (${SEED_ALPHA.resolved})`).toBe(200);
+    expect(((await sanity.json()) as TroubleTicket).status).toBe('resolved');
+
+    const res = await alphaClient.close(SEED_ALPHA.resolved);
     expect(res.status()).toBe(400);
     expect(((await res.json()) as ApiError).code).toBe('STATUS_TRANSITION_ERROR');
   });

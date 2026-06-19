@@ -118,8 +118,8 @@ Legenda typu: ✅ pozytywny · ⛔ negatywny (4xx/błąd). Kolumna „Status" oz
 | A3 | Idempotencja `(tenant, externalId)` | ✅ | P2 | 200 z istniejącym zasobem | ✔ |
 | A4 | Brak pola `description` | ⛔ | P2 | 400 `VALIDATION_ERROR` | ✔ |
 | A5 | Niedozwolony status w `create` (`closed`) | ⛔ | P2 | 400 `VALIDATION_ERROR` | ✔ |
-| A6 | `externalId` pusty / brak | ⛔ | P3 | 400 `VALIDATION_ERROR` | — |
-| A7 | `serviceId` < 1 lub nienumeryczny | ⛔ | P3 | 400 `VALIDATION_ERROR` | — |
+| A6 | `externalId` pusty / brak | ⛔ | P3 | 400 `VALIDATION_ERROR` | ✔ |
+| A7 | `serviceId` < 1 lub nienumeryczny | ⛔ | P3 | 400 `VALIDATION_ERROR` | ✔ |
 
 ### 6.2. API — przejścia statusów
 | # | Scenariusz | Typ | Prio | Oczekiwany rezultat | Status |
@@ -128,7 +128,7 @@ Legenda typu: ✅ pozytywny · ⛔ negatywny (4xx/błąd). Kolumna „Status" oz
 | S2 | Auto-notatka po zamknięciu (widoczna w GET) | ✅ | P3 | notatka „Zmiana statusu…" | ✔ |
 | S3 | Zamknięcie z `rejected` | ⛔ | P1 | 400 `STATUS_TRANSITION_ERROR` | ✔ |
 | S4 | Ponowne zamknięcie `closed` | ⛔ | P1 | 400 `STATUS_TRANSITION_ERROR` | ✔ |
-| S5 | Zamknięcie z `resolved`/`new` | ⛔ | P2 | 400 `STATUS_TRANSITION_ERROR` | — |
+| S5 | Zamknięcie z `resolved` (status `new` nieosiągalny przez API) | ⛔ | P2 | 400 `STATUS_TRANSITION_ERROR` | ✔ |
 
 ### 6.3. API — notatki
 | # | Scenariusz | Typ | Prio | Oczekiwany rezultat | Status |
@@ -136,7 +136,7 @@ Legenda typu: ✅ pozytywny · ⛔ negatywny (4xx/błąd). Kolumna „Status" oz
 | N1 | Notatka do `acknowledged` | ✅ | P2 | 201 (`id`, `text`, `date`) | ✔ |
 | N2 | Notatka do `rejected` | ⛔ | P2 | 400 `NOTE_ADDITION_NOT_ALLOWED` | ✔ |
 | N3 | Pusta treść notatki | ⛔ | P2 | 400 `VALIDATION_ERROR` | ✔ |
-| N4 | Notatka do `closed`/`resolved` | ⛔ | P2 | 400 `NOTE_ADDITION_NOT_ALLOWED` | — |
+| N4 | Notatka do `closed` | ⛔ | P2 | 400 `NOTE_ADDITION_NOT_ALLOWED` | ✔ |
 
 ### 6.4. API — multi-tenancy i auth
 | # | Scenariusz | Typ | Prio | Oczekiwany rezultat | Status |
@@ -158,9 +158,9 @@ Legenda typu: ✅ pozytywny · ⛔ negatywny (4xx/błąd). Kolumna „Status" oz
 | U5 | Zamknięcie zgłoszenia | ✅ | P3 | chip „Zamknięte", ukryte akcje | ✔ |
 | U6 | Lista — nagłówki i zgłoszenie z chipem | ✅ | P3 | poprawny render tabeli | ✔ |
 | U7 | Brak wycieku danych innego tenanta | ⛔ | P1 | 404, dane beta niewidoczne dla alpha | ✔ |
-| U8 | Komunikat błędu z API (snackbar) | ⛔ | P3 | czytelny komunikat błędu | — |
+| U8 | Komunikat błędu z API w snackbarze (nieaktualny stan UI) | ⛔ | P3 | snackbar z komunikatem błędu | ✔ |
 
-**Podsumowanie pokrycia:** zaimplementowano **25 testów** (18 API + logowanie + 6 UI) obejmujących wszystkie obszary i — zgodnie z wymaganiem — wiele **ścieżek negatywnych 4xx** w obu obszarach.
+**Podsumowanie pokrycia:** zaimplementowano **31 testów** (23 API + logowanie + 7 UI) obejmujących wszystkie obszary i — zgodnie z wymaganiem — wiele **ścieżek negatywnych 4xx** w obu obszarach.
 
 ---
 
@@ -186,7 +186,7 @@ Podczas analizy implementacji (nie tylko specyfikacji) wykryto rozbieżności wz
 
 ## 8. Co dalej (poza zakresem tego zadania)
 
-- **CI/CD** — uruchamianie pełnego zestawu w pipeline (start `docker-compose` → testy → publikacja raportu HTML); bramka jakości na merge.
+- **CI/CD** — dołączono workflow GitHub Actions ([`.github/workflows/tests.yml`](../../.github/workflows/tests.yml)) uruchamiający pełny zestaw (start `docker-compose` → testy → raport HTML jako artefakt). Dalszy krok: bramka jakości na merge i równoległe shardy.
 - **Testy kontraktowe** — walidacja odpowiedzi względem schematu OpenAPI (np. `ajv`) jako automatyczny wykrywacz rozbieżności z sekcji 7.
 - **Rozszerzenie ścieżek negatywnych** — pełna macierz przejść statusów, walidacja granic wszystkich pól, `additionalProperties: false`.
 - **Bezpieczeństwo** — testy tokenu bez claimu `tenant_id` (oczekiwane 403), wygasłego/podmienionego tokenu, nagłówków CORS.

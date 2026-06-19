@@ -86,4 +86,37 @@ test.describe('API: tworzenie zgłoszeń i idempotencja', () => {
     expect(res.status()).toBe(400);
     expect(((await res.json()) as ApiError).code).toBe('VALIDATION_ERROR');
   });
+
+  test('[neg] pusty externalId → 400 VALIDATION_ERROR', async ({ alphaClient }) => {
+    const res = await alphaClient.createRaw({
+      externalId: '',
+      serviceId: EVEN_SERVICE_ID,
+      description: 'Pusty externalId',
+      status: 'new',
+    });
+    expect(res.status()).toBe(400);
+    expect(((await res.json()) as ApiError).code).toBe('VALIDATION_ERROR');
+  });
+
+  test('[neg] serviceId poniżej minimum (0) → 400 VALIDATION_ERROR', async ({ alphaClient }) => {
+    const res = await alphaClient.createRaw({
+      externalId: uniqueExternalId(),
+      serviceId: 0,
+      description: 'serviceId poniżej minimum',
+      status: 'new',
+    });
+    expect(res.status()).toBe(400);
+    expect(((await res.json()) as ApiError).code).toBe('VALIDATION_ERROR');
+  });
+
+  test('[neg] nienumeryczny serviceId → 400 VALIDATION_ERROR', async ({ alphaClient }) => {
+    const res = await alphaClient.createRaw({
+      externalId: uniqueExternalId(),
+      serviceId: 'abc',
+      description: 'serviceId nienumeryczny',
+      status: 'new',
+    });
+    expect(res.status()).toBe(400);
+    expect(((await res.json()) as ApiError).code).toBe('VALIDATION_ERROR');
+  });
 });
